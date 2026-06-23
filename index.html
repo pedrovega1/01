@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Web — a remake</title>
+  <title>just memories</title>
   <link rel="stylesheet" href="styles/main.css" />
 </head>
 <body class="locked">
@@ -13,7 +13,7 @@
     <div class="intro-inner">
       <p class="kicker">FANALIS COMPOSE PRESENTS</p>
       <h1 class="intro-title">The Web</h1>
-      <p class="intro-sub">a remake</p>
+      <p class="intro-sub">pedrovega</p>
       <button id="enter-btn">▶ ВОЙТИ</button>
       <p class="intro-note">A SHORT FILM ABOUT THE WEB</p>
     </div>
@@ -28,25 +28,22 @@
   <!-- спейсер: создаёт высоту прокрутки для фазы зума в монитор -->
   <div id="scroll-driver"></div>
 
-  <!-- ФАЗА 3: контент «внутри монитора» (появляется после зума) -->
-  <main id="site-content">
-    <section class="site-hero">
-      <h2>Мы внутри.</h2>
-      <p>Это контент, который живёт по ту сторону экрана.</p>
-    </section>
-    <section class="site-block">
-      <h3>Работы</h3>
-      <p>Кейсы, проекты, всё что угодно.</p>
-    </section>
-    <section class="site-block">
-      <h3>О нас</h3>
-      <p>Студия, которая перестраивает скучные сайты.</p>
-    </section>
-    <section class="site-block">
-      <h3>Контакты</h3>
-      <p>hello@example.com</p>
-    </section>
-  </main>
+  <!-- ФАЗА 3: CRT-комната памяти (3D, рендерится в тот же canvas после зума) -->
+  <div id="room-ui">
+    <p id="look-hint">DRAG · ОСМОТР ⟲ &nbsp;&nbsp; CLICK · ПОДОЙТИ</p>
+    <button id="room-exit">← EXIT</button>
+  </div>
+
+  <!-- подсказка наведения на бумбокс -->
+  <p id="boom-hint">▶ ВКЛЮЧИТЬ</p>
+  <!-- фоновая музыка (src добавить позже) -->
+  <audio id="bgm" loop></audio>
+
+  <!-- CRT-зерно + скан-линии поверх всего -->
+  <div id="grain"></div>
+
+  <!-- чёрный оверлей для плавного перехода между сценами -->
+  <div id="fade"></div>
 
   <script type="importmap">
   {
@@ -57,6 +54,6 @@
     }
   }
   </script>
-  <script type="module" src="src/main.js?b=8"></script>
+  <script type="module" src="src/main.js?b=16"></script>
 </body>
 </html>

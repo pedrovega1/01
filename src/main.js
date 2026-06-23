@@ -100,7 +100,7 @@ function drawScreen(t) {
   sCtx.fillStyle = '#7CFCB4';
   sCtx.font = '22px monospace';
   sCtx.fillText('> THE WEB', 40, 90);
-  sCtx.fillText('> a remake_', 40, 130);
+  sCtx.fillText('> pedrovega_', 40, 130);
   if (Math.floor(t * 2) % 2 === 0) sCtx.fillRect(192, 114, 12, 20); // мигающий курсор
   // скан-линии
   sCtx.fillStyle = 'rgba(0,0,0,0.18)';
@@ -122,7 +122,22 @@ const dustGeo = new THREE.BufferGeometry();
 const dustPos = [];
 for (let i = 0; i < 220; i++) dustPos.push((Math.random() - 0.5) * 12, Math.random() * 6, (Math.random() - 0.5) * 10 - 2);
 dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(dustPos, 3));
-const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xd8c9a8, size: 0.02, transparent: true, opacity: 0.5 }));
+// мягкий круглый спрайт (radial-gradient) вместо квадрата
+const dustSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,244,220,1)');
+  g.addColorStop(0.4, 'rgba(216,201,168,0.6)');
+  g.addColorStop(1, 'rgba(216,201,168,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+  color: 0xd8c9a8, size: 0.05, map: dustSprite,
+  transparent: true, opacity: 0.55, depthWrite: false,
+  blending: THREE.AdditiveBlending, sizeAttenuation: true,
+}));
 scene.add(dust);
 
 // =========================================================
@@ -157,18 +172,31 @@ const gltfLoader = new GLTFLoader();
 const loadGLB = (url) => new Promise((res, rej) => gltfLoader.load(url, res, undefined, rej));
 const applyPS1Tree = (root) => root.traverse((o) => { if (o.isMesh) makePS1(o.material); });
 
-Promise.all([loadGLB('assets/Table.glb'), loadGLB('assets/pc.glb'), loadGLB('assets/Camera.glb')])
-  .then(([table, pc, cam]) => {
+// бумбокс на столе (кликабельный, музыку подключим позже)
+let boombox = null, boomScale = 1, hoverBoom = false;
+
+Promise.all([loadGLB('assets/Table.glb'), loadGLB('assets/pc.glb'), loadGLB('assets/Camera.glb'), loadGLB('assets/cc0_free_low_poly_boombox.glb')])
+  .then(([table, pc, cam, boom]) => {
     // --- стол (верх столешницы ~ y=1.0) ---
     const tableObj = table.scene; applyPS1Tree(tableObj);
     tableObj.position.set(0, 0, -2.0);
     scene.add(tableObj);
+    tableObj.updateMatrixWorld(true);
+    const tableTop = new THREE.Box3().setFromObject(tableObj).max.y; // верх столешницы
 
     // --- компьютер на столе ---
     const pcObj = pc.scene; applyPS1Tree(pcObj);
     pcObj.rotation.y = PC_ROT_Y;
     pcObj.position.set(0, 1.245, -2.0); // низ pc садится на столешницу
     scene.add(pcObj);
+
+    // --- бумбокс справа от монитора ---
+    boombox = boom.scene; applyPS1Tree(boombox);
+    const bsz = new THREE.Box3().setFromObject(boombox).getSize(new THREE.Vector3());
+    boomScale = 0.6 / bsz.x; boombox.scale.setScalar(boomScale);
+    boombox.position.set(0.95, 0, -1.9); boombox.rotation.y = -0.4;
+    scene.add(boombox); boombox.updateMatrixWorld(true);
+    boombox.position.y = tableTop - new THREE.Box3().setFromObject(boombox).min.y; // на столешницу
 
     // --- видеокамера слева-сзади, как фоновый реквизит ---
     const camObj = cam.scene; applyPS1Tree(camObj);
@@ -184,7 +212,7 @@ Promise.all([loadGLB('assets/Table.glb'), loadGLB('assets/pc.glb'), loadGLB('ass
       const box = new THREE.Box3().setFromObject(screenMesh);
       const c = new THREE.Vector3(); box.getCenter(c);
       const s = new THREE.Vector3(); box.getSize(s);
-      screen.scale.set(s.x * 0.9, s.y * 0.9, 1);
+      screen.scale.set(s.x * 0.95, s.y * 0.9, 1);
       screen.position.set(c.x, c.y, c.z + s.z / 2 + 0.006); // чуть перед лицевой гранью
       screen.visible = true;
       // навести зум на этот экран
@@ -199,10 +227,182 @@ Promise.all([loadGLB('assets/Table.glb'), loadGLB('assets/pc.glb'), loadGLB('ass
   .catch((e) => console.warn('Модель не загрузилась:', e));
 
 // =========================================================
+//  CRT-КОМНАТА ПАМЯТИ (idea 4) — отдельная сцена в том же canvas
+// =========================================================
+const RW = 8, RH = 4, RD = 8; // ширина/высота/глубина комнаты
+const roomScene = new THREE.Scene();
+roomScene.background = new THREE.Color(0x140f0a);
+roomScene.fog = new THREE.Fog(0x140f0a, 6, 16);
+const roomCam = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.05, 60);
+
+// коробка-комната (нормали внутрь) + пол
+const room = new THREE.Mesh(new THREE.BoxGeometry(RW, RH, RD),
+  makePS1(new THREE.MeshStandardMaterial({ color: 0x9c7c4e, roughness: 1, side: THREE.BackSide })));
+room.position.y = RH / 2; roomScene.add(room);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD),
+  makePS1(new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 1 })));
+floor.rotation.x = -Math.PI / 2; roomScene.add(floor);
+
+// свет: мягкий тёплый общий + ламповые источники по углам + CRT-отблеск
+roomScene.add(new THREE.HemisphereLight(0xffe0b0, 0x281a0c, 0.3));
+const roomLamp = new THREE.PointLight(0xffcf94, 3, 14, 2);
+roomLamp.position.set(0, 3.5, 0); roomScene.add(roomLamp);
+// видимые лампы-шары с тёплым светом (ламповый вайб)
+function lampAt(x, z, col, intensity) {
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10),
+    new THREE.MeshBasicMaterial({ color: col }));
+  bulb.position.set(x, 1.85, z); roomScene.add(bulb);
+  const pl = new THREE.PointLight(col, intensity, 8, 2);
+  pl.position.set(x, 1.85, z); roomScene.add(pl);
+}
+lampAt(-RW / 2 + 0.7, RD / 2 - 0.7, 0xffb066, 6);   // тёплая у двери
+lampAt(RW / 2 - 0.7, -RD / 2 + 0.7, 0xff8a4a, 5);   // оранжевая в углу
+
+const rdust = dust.clone(); roomScene.add(rdust);
+
+// фотки в рамках на стенах
+const texLoader = new THREE.TextureLoader();
+const photoMeshes = []; // для клика-навигации
+function hangPhoto(url, x, y, z, ry, h = 1.3) {
+  const grp = new THREE.Group();
+  // рамка-короб (дерево, с глубиной) + паспарту + фото
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.07),
+    makePS1(new THREE.MeshStandardMaterial({ color: 0x3a2616, roughness: 0.7 })));
+  // паспарту без PS1-снапа, иначе оно z-файтит с фото и перекрывает его (серая заглушка)
+  const matte = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshStandardMaterial({ color: 0xe9ddc2, roughness: 1 }));
+  const photo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.DoubleSide }));
+  frame.position.z = -0.035; matte.position.z = 0.015; photo.position.z = 0.05; // развели по Z
+  grp.add(frame, matte, photo);
+  grp.position.set(x, y, z); grp.rotation.y = ry; roomScene.add(grp);
+  photoMeshes.push(photo);
+  texLoader.load(url, (tex) => {
+    tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
+    const a = tex.image.width / tex.image.height, w = h * a;
+    photo.material.map = tex; photo.material.color.set(0xffffff); photo.material.needsUpdate = true;
+    photo.scale.set(w, h, 1);
+    matte.scale.set(w + 0.13, h + 0.13, 1);   // паспарту
+    frame.scale.set(w + 0.28, h + 0.28, 1);   // деревянная рамка
+  });
+}
+const HY = 2.0, eps = 0.06;
+hangPhoto('assets/1.png', -1.7, HY, -RD / 2 + eps, 0);
+hangPhoto('assets/4.png', 1.7, HY, -RD / 2 + eps, 0);
+hangPhoto('assets/2.png', -RW / 2 + eps, HY, -0.8, Math.PI / 2);
+hangPhoto('assets/3.png', RW / 2 - eps, HY, -0.8, -Math.PI / 2);
+
+// управление: осмотр перетаскиванием + навигация кликом (без WASD/скролла)
+let inRoom = false, yaw = Math.PI, pitch = 0, dragging = false, moved = false, px = 0, py = 0;
+const roomDir = new THREE.Vector3();
+function aim() {
+  roomDir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+  roomCam.lookAt(roomCam.position.clone().add(roomDir));
+}
+const M = 0.6; // отступ от стен
+const clampX = (v) => Math.max(-RW / 2 + M, Math.min(RW / 2 - M, v));
+const clampZ = (v) => Math.max(-RD / 2 + M, Math.min(RD / 2 - M, v));
+function moveTo(tx, tz) {
+  gsap.to(roomCam.position, { x: clampX(tx), z: clampZ(tz), duration: 1.1, ease: 'power2.inOut' });
+}
+const ray = new THREE.Raycaster();
+const bgm = document.querySelector('#bgm');
+const boomHint = document.querySelector('#boom-hint');
+let playing = false;
+function toggleMusic() {
+  playing = !playing;
+  if (playing) bgm.play().catch(() => {}); else bgm.pause(); // src добавишь позже -> заиграет
+  if (boomHint) boomHint.textContent = playing ? '⏸ ПАУЗА' : '▶ ВКЛЮЧИТЬ';
+}
+function navClick(e) {
+  const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, roomCam);
+  const fh = ray.intersectObject(floor)[0];
+  if (fh) { moveTo(fh.point.x, fh.point.z); return; }
+  // клик по фото -> встать ровно перед ним и навести взгляд в центр
+  const ph = ray.intersectObjects(photoMeshes)[0];
+  if (ph) {
+    const grp = ph.object.parent;
+    const c = grp.getWorldPosition(new THREE.Vector3());          // центр картинки
+    const n = new THREE.Vector3(0, 0, 1).applyQuaternion(grp.quaternion);
+    const fx = clampX(c.x + n.x * 2.2), fz = clampZ(c.z + n.z * 2.2); // точка перед фото
+    moveTo(fx, fz);
+    // доворот yaw/pitch так, чтобы картинка была по центру кадра
+    const dir = c.clone().sub(new THREE.Vector3(fx, roomCam.position.y, fz));
+    let ty = Math.atan2(dir.x, dir.z);
+    const tp = Math.atan2(dir.y, Math.hypot(dir.x, dir.z));
+    while (ty - yaw > Math.PI) ty -= 2 * Math.PI;
+    while (ty - yaw < -Math.PI) ty += 2 * Math.PI;
+    const o = { yaw, pitch };
+    gsap.to(o, { yaw: ty, pitch: tp, duration: 1.1, ease: 'power2.inOut',
+      onUpdate: () => { yaw = o.yaw; pitch = o.pitch; } });
+  }
+}
+addEventListener('pointerdown', (e) => { if (inRoom) { dragging = true; moved = false; px = e.clientX; py = e.clientY; } });
+addEventListener('pointerup', (e) => {
+  if (inRoom) { if (!moved) navClick(e); dragging = false; return; }
+  if (hoverBoom) toggleMusic(); // клик по бумбоксу снаружи
+});
+addEventListener('pointermove', (e) => {
+  if (inRoom) {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - px) + Math.abs(e.clientY - py) > 6) moved = true; // отличаем драг от клика
+    yaw -= (e.clientX - px) * 0.005;
+    pitch = Math.max(-1.1, Math.min(1.1, pitch - (e.clientY - py) * 0.005));
+    px = e.clientX; py = e.clientY;
+    return;
+  }
+  // снаружи: наведение на бумбокс -> курсор-палец + подсказка у курсора
+  if (!boombox) return;
+  const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  hoverBoom = ray.intersectObject(boombox, true).length > 0;
+  canvas.style.cursor = hoverBoom ? 'pointer' : '';
+  if (boomHint) {
+    boomHint.style.opacity = hoverBoom ? '1' : '0';
+    boomHint.style.left = e.clientX + 'px';
+    boomHint.style.top = (e.clientY - 26) + 'px';
+  }
+});
+
+const roomUI = document.querySelector('#room-ui');
+const fade = document.querySelector('#fade');
+let busy = false; // идёт переход между сценами
+// плавный переход: затемнить -> свап на середине -> высветлить
+function transition(swap) {
+  busy = true;
+  gsap.to(fade, { opacity: 1, duration: 0.45, ease: 'power2.in', onComplete: () => {
+    swap();
+    gsap.to(fade, { opacity: 0, duration: 0.6, ease: 'power2.out', onComplete: () => { busy = false; } });
+  } });
+}
+function enterRoom() {
+  if (inRoom || busy) return;
+  transition(() => {
+    inRoom = true;
+    roomCam.position.set(0, 1.7, 3.2); yaw = Math.PI; pitch = -0.05; aim();
+    document.body.classList.add('locked');
+    roomUI && roomUI.classList.add('on');
+  });
+}
+function exitRoom() {
+  if (!inRoom || busy) return;
+  transition(() => {
+    inRoom = false; hoverBoom = false;
+    if (boomHint) boomHint.style.opacity = '0';
+    canvas.style.cursor = '';
+    document.body.classList.remove('locked');
+    roomUI && roomUI.classList.remove('on');
+    window.scrollTo(0, 0); updateScroll();
+  });
+}
+const exitBtn = document.querySelector('#room-exit');
+exitBtn && exitBtn.addEventListener('click', exitRoom);
+
+// =========================================================
 //  СКРОЛЛ -> прогресс зума
 // =========================================================
 const driver = document.querySelector('#scroll-driver');
-const siteContent = document.querySelector('#site-content');
 const hint = document.querySelector('#scroll-hint');
 let progress = 0;
 
@@ -210,8 +410,10 @@ function easeInOut(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2)
 function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
 function updateScroll() {
-  const driverH = driver.offsetHeight;            // высота фазы зума
-  progress = Math.min(1, Math.max(0, window.scrollY / driverH));
+  // прогресс по всему доступному диапазону скролла (а не по высоте спейсера),
+  // иначе без HTML-контента низ страницы не даёт дойти до 1
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  progress = maxScroll > 0 ? Math.min(1, Math.max(0, window.scrollY / maxScroll)) : 0;
 
   // dolly камеры
   const e = easeInOut(progress);
@@ -224,18 +426,16 @@ function updateScroll() {
   // подсказка скролла: видна в начале, исчезает при движении
   hint.style.opacity = (progress < 0.04 && !document.body.classList.contains('locked')) ? '1' : '0';
 
-  // проявление HTML-контента на финале зума
-  const reveal = smoothstep(0.82, 1.0, progress);
-  siteContent.style.opacity = reveal.toFixed(3);
-  siteContent.classList.toggle('live', reveal > 0.5);
-  canvas.style.opacity = (1 - smoothstep(0.92, 1.0, progress)).toFixed(3);
+  // финал зума -> вход в CRT-комнату
+  if (progress > 0.985) enterRoom();
 }
 window.addEventListener('scroll', updateScroll, { passive: true });
 
 // ---- resize ----
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  const a = window.innerWidth / window.innerHeight;
+  camera.aspect = a; camera.updateProjectionMatrix();
+  roomCam.aspect = a; roomCam.updateProjectionMatrix();
   setRenderSize();
 });
 
@@ -245,8 +445,15 @@ function tick() {
   const t = clock.getElapsedTime();
   drawScreen(t);
   screenTex.needsUpdate = true;
-  dust.rotation.y = t * 0.02;
-  renderer.render(scene, camera);
+  if (inRoom) {
+    aim();                          // взгляд (позицию двигает gsap по клику)
+    rdust.rotation.y = t * 0.03;
+    renderer.render(roomScene, roomCam);
+  } else {
+    if (boombox) boombox.scale.setScalar(boomScale * (hoverBoom ? 1 + Math.sin(t * 6) * 0.05 : 1)); // пульс при наведении
+    dust.rotation.y = t * 0.02;
+    renderer.render(scene, camera);
+  }
   requestAnimationFrame(tick);
 }
 tick();
