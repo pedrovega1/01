@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /* =========================================================
    Живой CRT-экран монитора: CanvasTexture с ретро-контентом.
-   createScreen(scene) -> { mesh, draw(t), placeOnMesh(pcObj) }
+   createScreen(scene) -> { mesh, draw(t), placeAt(center, w, h) }
    ========================================================= */
 export function createScreen(scene) {
   const sCanvas = document.createElement('canvas');
@@ -36,26 +36,18 @@ export function createScreen(scene) {
 
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1), // масштабируется под монитор модели после загрузки
-    new THREE.MeshBasicMaterial({ map: texture })
+    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
   );
   mesh.visible = false; // покажем, спозиционировав по экрану pc.glb
   scene.add(mesh);
 
-  // спозиционировать плоскость по реальному экрану-мешу модели (mesh_id49)
-  // -> вернуть геометрию экрана для наводки камеры, либо null
-  function placeOnMesh(pcObj) {
-    let screenMesh = null;
-    pcObj.traverse((o) => { if (o.name === 'mesh_id49') screenMesh = o; });
-    if (!screenMesh) return null;
-    pcObj.updateMatrixWorld(true); // иначе bounding box возьмёт локальные координаты
-    const box = new THREE.Box3().setFromObject(screenMesh);
-    const c = new THREE.Vector3(); box.getCenter(c);
-    const s = new THREE.Vector3(); box.getSize(s);
-    mesh.scale.set(s.x * 0.95, s.y * 0.9, 1);
-    mesh.position.set(c.x, c.y, c.z + s.z / 2 + 0.006); // чуть перед лицевой гранью
+  // положить оверлей на нарисованный экран (фронтально, нормаль +Z)
+  function placeAt(center, w, h) {
+    mesh.position.copy(center);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(w, h, 1);
     mesh.visible = true;
-    return { center: c, size: s };
   }
 
-  return { mesh, draw, placeOnMesh };
+  return { mesh, draw, placeAt };
 }

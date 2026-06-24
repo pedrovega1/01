@@ -1,0 +1,23 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - paragraph [ref=e4]: FANALIS COMPOSE PRESENTS
+    - heading "The Web" [level=1] [ref=e5]
+    - paragraph [ref=e6]: pedrovega
+    - button "▶ ВОЙТИ" [ref=e7] [cursor=pointer]
+    - paragraph [ref=e8]: A SHORT FILM ABOUT THE WEB
+  - generic: SCROLL ↓
+  - generic:
+    - paragraph: DRAG · ОСМОТР ⟲ CLICK · ПОДОЙТИ
+    - button "← EXIT" [ref=e11] [cursor=pointer]
+  - generic:
+    - heading [level=3]
+    - paragraph
+  - button "Управление музыкой" [ref=e12] [cursor=pointer]:
+    - img [ref=e13]
+  - generic:
+    - button "Воспроизведение": ▶
+    - generic:
+      - img
+      - slider "Громкость": "70"
+      - generic: "70"
+  - paragraph: ▶ ВКЛЮЧИТЬ

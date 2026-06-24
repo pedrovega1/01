@@ -104,21 +104,60 @@ export function createDeskScene({ onReady } = {}) {
     }
   }
 
-  // ---- загрузка моделей: стол + ПК + видеокамера + бумбокс ----
-  Promise.all([loadGLB(ASSETS.table), loadGLB(ASSETS.pc), loadGLB(ASSETS.camera), loadGLB(ASSETS.boombox)])
-    .then(([table, pc, cam, boom]) => {
+  // ---- детальный ретро-CRT, нарисованный из примитивов (вместо pc.glb) ----
+  // экран строго плоский, нормаль = +Z -> оверлей и камера встают ровно, без перекоса
+  function buildComputer(tableTop, tableW) {
+    const S = 0.48;                                   // общий масштаб компьютера (меньше = мельче)
+    const g = new THREE.Group();
+    const beige = new THREE.MeshStandardMaterial({ color: 0xcdbf9a, roughness: 0.85, metalness: 0 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x26262a, roughness: 0.9, metalness: 0 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0x05100b, roughness: 0.45, metalness: 0.1 });
+    const box = (w, h, d, mat, x, y, z) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z); g.add(m); return m;
+    };
+
+    // десктоп-корпус (чуть шире монитора)
+    const caseW = 1.7;
+    const fzc = 0.58;                                  // лицевая грань корпуса
+    box(caseW, 0.42, 1.15, dark, 0, 0.21, 0);
+    for (let i = 0; i < 4; i++) box(0.5, 0.015, 0.02, beige, caseW * 0.27, 0.30 + i * 0.04, fzc); // вент-полоски
+    box(0.12, 0.12, 0.03, beige, -caseW * 0.33, 0.21, fzc); // кнопка вкл
+    box(0.55, 0.05, 0.025, glass, 0, 0.12, fzc);            // щель дисковода 5.25"
+
+    // монитор
+    const baseTop = 0.42;
+    const bodyY = baseTop + 0.6;
+    box(0.95, 0.8, 0.5, beige, 0, bodyY + 0.02, -0.55);     // задний кожух CRT (уже и глубже)
+    box(1.28, 1.08, 0.92, beige, 0, bodyY, -0.05);          // лицевой корпус
+    const fz = 0.41;                                        // лицевая грань корпуса (-0.05 + 0.46)
+    box(0.98, 0.76, 0.06, glass, 0, bodyY, fz);             // тёмный экран в рамке
+    const led = new THREE.MeshStandardMaterial({ color: 0x6dff9c, emissive: 0x2bff86, emissiveIntensity: 1.6 });
+    box(0.04, 0.04, 0.02, led, 0.5, bodyY - 0.46, fz + 0.02); // LED питания
+
+    // origin на уровне столешницы -> при масштабе низ остаётся на столе
+    g.scale.setScalar(S);
+    g.position.set(0, tableTop, -1.7);
+    const screenCenter = new THREE.Vector3(0, bodyY, fz + 0.035).multiplyScalar(S).add(g.position);
+    return { group: g, screenCenter, screenW: 0.9 * S, screenH: 0.66 * S };
+  }
+
+  // ---- загрузка моделей: стол + видеокамера + бумбокс ----
+  Promise.all([loadGLB(ASSETS.table), loadGLB(ASSETS.camera), loadGLB(ASSETS.boombox)])
+    .then(([table, cam, boom]) => {
       // стол (верх столешницы ~ y=1.0)
       const tableObj = applyPS1Tree(table.scene);
       tableObj.position.set(0, 0, -2.0);
       scene.add(tableObj);
       tableObj.updateMatrixWorld(true);
-      const tableTop = new THREE.Box3().setFromObject(tableObj).max.y;
+      const tbox = new THREE.Box3().setFromObject(tableObj);
+      const tableTop = tbox.max.y;
+      const tableW = tbox.max.x - tbox.min.x;
 
-      // компьютер на столе
-      const pcObj = applyPS1Tree(pc.scene);
-      pcObj.rotation.y = DESK.PC_ROT_Y;
-      pcObj.position.set(0, 1.245, -2.0);
-      scene.add(pcObj);
+      // компьютер (нарисован вручную)
+      const pc = buildComputer(tableTop, tableW);
+      applyPS1Tree(pc.group);
+      scene.add(pc.group);
 
       // бумбокс слева от монитора
       boombox = applyPS1Tree(boom.scene);
@@ -142,16 +181,14 @@ export function createDeskScene({ onReady } = {}) {
       camObj.rotation.y = PROP_CAMERA.rotationY;
       scene.add(camObj);
 
-      // живой экран по монитору модели + наводка dolly
-      const sm = screen.placeOnMesh(pcObj);
-      if (sm) {
-        DESK.SCREEN_CENTER.set(sm.center.x, sm.center.y, sm.center.z + sm.size.z / 2);
-        DESK.CAM_START.set(sm.center.x, sm.center.y + 0.5, sm.center.z + 4.4);
-        DESK.CAM_END.set(sm.center.x, sm.center.y, sm.center.z + 0.28);
-        camera.position.copy(DESK.CAM_START);
-        camera.lookAt(DESK.SCREEN_CENTER);
-        onReady && onReady();
-      }
+      // живой экран на нарисованном мониторе + наводка dolly (нормаль = +Z)
+      screen.placeAt(pc.screenCenter, pc.screenW, pc.screenH);
+      DESK.SCREEN_CENTER.copy(pc.screenCenter);
+      DESK.CAM_START.copy(pc.screenCenter).add(new THREE.Vector3(0, 0.4, 3.1));
+      DESK.CAM_END.copy(pc.screenCenter).add(new THREE.Vector3(0, 0, 0.28));
+      camera.position.copy(DESK.CAM_START);
+      camera.lookAt(DESK.SCREEN_CENTER);
+      onReady && onReady();
     })
     .catch((e) => console.warn('Модель не загрузилась:', e));
 

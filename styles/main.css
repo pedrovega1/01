@@ -71,6 +71,24 @@ body.locked { overflow: hidden; height: 100vh; }
   padding: 0.7rem 1.4rem; cursor: pointer; transition: all 0.25s ease;
 }
 #room-exit:hover { background: #cfeede; color: #0b1a12; border-color: #cfeede; }
+/* описание картины: всплывает снизу при подходе */
+#photo-caption {
+  position: fixed; left: 50%; bottom: 11vh; transform: translate(-50%, 14px);
+  z-index: 36; pointer-events: none; max-width: min(560px, 86vw); text-align: center;
+  opacity: 0; transition: opacity 0.5s ease, transform 0.5s ease;
+  font-family: ui-monospace, "Courier New", monospace;
+  background: rgba(10, 8, 6, 0.62); border: 1px solid rgba(207, 238, 222, 0.25);
+  padding: 0.9rem 1.4rem; backdrop-filter: blur(2px);
+}
+#photo-caption.on { opacity: 1; transform: translate(-50%, 0); }
+#photo-caption .pc-title {
+  margin: 0 0 0.35rem; font-size: 0.9rem; letter-spacing: 0.22em; text-transform: uppercase;
+  color: #cfeede; text-shadow: 0 0 8px rgba(60, 255, 170, 0.4);
+}
+#photo-caption .pc-text {
+  margin: 0; font-size: 0.8rem; line-height: 1.5; letter-spacing: 0.04em; color: #e6dcc8;
+}
+
 /* осмотр перетаскиванием -> курсор-«хват» внутри комнаты */
 body:has(#room-ui.on) #scene-canvas { cursor: grab; }
 body:has(#room-ui.on) #scene-canvas:active { cursor: grabbing; }
