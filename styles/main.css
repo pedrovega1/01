@@ -93,6 +93,50 @@ body:has(#room-ui.on) #scene-canvas:active { cursor: grabbing; }
   white-space: nowrap;
 }
 
+/* ===== глобальное управление музыкой (все сцены) ===== */
+#music-gear {
+  position: fixed; top: 4vh; right: 4vh; z-index: 70;
+  width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
+  color: #cfeede; background: rgba(11, 26, 18, 0.85); border: 1px solid #4a5a44;
+  cursor: pointer; transition: all 0.25s ease;
+}
+#music-gear:hover { background: #cfeede; color: #0b1a12; border-color: #cfeede; }
+#music-gear.playing { color: #2bb8b0; border-color: #2bb8b0; } /* индикатор: музыка идёт */
+
+/* вращаем шестерёнку только когда играет */
+#music-gear.playing svg { animation: gearSpin 4s linear infinite; }
+@keyframes gearSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+#music-panel {
+  position: fixed; top: calc(4vh + 50px); right: 4vh; z-index: 70;
+  display: flex; flex-direction: column; gap: 0.55rem;
+  font-family: ui-monospace, "Courier New", monospace;
+  color: #cfeede; background: rgba(11, 26, 18, 0.92);
+  border: 1px solid #4a5a44; padding: 0.7rem 0.9rem;
+  opacity: 0; transform: translateY(-6px); pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+#music-panel.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#music-play {
+  font-family: inherit; font-size: 0.85rem; letter-spacing: 0.1em;
+  color: #cfeede; background: transparent; border: 1px solid #4a5a44;
+  padding: 0.4rem 0; cursor: pointer; transition: all 0.2s ease;
+}
+#music-play:hover { background: #cfeede; color: #0b1a12; }
+.vol-row { display: flex; align-items: center; gap: 0.5rem; }
+#vol-val { font-size: 0.7rem; min-width: 1.6em; text-align: right; letter-spacing: 0.1em; }
+#vol-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100px; height: 3px; background: #4a5a44; outline: none; cursor: pointer;
+}
+#vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 12px; height: 12px; background: #cfeede; border: none; border-radius: 0;
+}
+#vol-slider::-moz-range-thumb {
+  width: 12px; height: 12px; background: #cfeede; border: none; border-radius: 0;
+}
+
 /* чёрный оверлей перехода между сценами */
 #fade {
   position: fixed; inset: 0; z-index: 80; background: #000;

@@ -34,10 +34,25 @@
     <button id="room-exit">← EXIT</button>
   </div>
 
+  <!-- глобальное управление музыкой (все сцены) -->
+  <button id="music-gear" aria-label="Управление музыкой" title="Музыка">
+    <i data-lucide="disc-3" style="width:22px;height:22px;"></i>
+  </button>
+  <div id="music-panel">
+    <button id="music-play" aria-label="Воспроизведение">▶</button>
+    <span class="vol-row">
+      <i data-lucide="volume-2" style="width:16px;height:16px;"></i>
+      <input id="vol-slider" type="range" min="0" max="100" value="70" aria-label="Громкость">
+      <span id="vol-val">70</span>
+    </span>
+  </div>
+
   <!-- подсказка наведения на бумбокс -->
   <p id="boom-hint">▶ ВКЛЮЧИТЬ</p>
-  <!-- фоновая музыка (src добавить позже) -->
-  <audio id="bgm" loop></audio>
+
+  <!-- фоновая музыка: бумбокс играет Heads Will Roll -->
+  <audio id="bgm" loop preload="auto"
+         src="audio/Yeah%20Yeah%20Yeahs%20-%20Heads%20Will%20Roll%20(A-Trak%20Remix%20Radio%20Edit)%20(Lyrics).mp3"></audio>
 
   <!-- CRT-зерно + скан-линии поверх всего -->
   <div id="grain"></div>
@@ -54,6 +69,7 @@
     }
   }
   </script>
-  <script type="module" src="src/main.js?b=34"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script type="module" src="src/main.js?b=39"></script>
 </body>
 </html>
