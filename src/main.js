@@ -31,17 +31,17 @@ function setRenderSize() {
 setRenderSize();
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf0a25a);
-scene.fog = new THREE.Fog(0xe79a5c, 22, 150); // закатная дымка на горизонте
+scene.background = new THREE.Color(0xffa24a);
+scene.fog = new THREE.Fog(0xc86a2d, 24, 150); // закатная дымка на горизонте
 
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.copy(CAM_START);
 camera.lookAt(SCREEN_CENTER);
 
 // ---- освещение (закат) ----
-const SUN_DIR = new THREE.Vector3(0.35, 0.18, -1).normalize(); // солнце низко за столом
-scene.add(new THREE.HemisphereLight(0xffe0b0, 0x556b2f, 0.75)); // небо тёплое / земля зелёная
-const sun = new THREE.DirectionalLight(0xffb066, 2.0);          // тёплый закатный свет
+const SUN_DIR = new THREE.Vector3(0.02, 0.04, -1).normalize(); // солнце низко за столом
+scene.add(new THREE.HemisphereLight(0xffd2c8, 0x4b5320, 0.8)); // небо тёплое / земля зелёная
+const sun = new THREE.DirectionalLight(0xffb066, 2.35);          // тёплый закатный свет
 sun.position.copy(SUN_DIR.clone().multiplyScalar(40));
 scene.add(sun);
 const lamp = new THREE.PointLight(0xffd9a0, 8, 6, 2);           // мягкая подсветка монитора/стола
@@ -52,37 +52,205 @@ scene.add(lamp);
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
   uniforms: {
-    top: { value: new THREE.Color(0x1d2c5e) }, // глубокий синий зенит
-    mid: { value: new THREE.Color(0xff7a33) }, // оранжевый закат
-    bot: { value: new THREE.Color(0xffcf8a) }, // светлая дымка у земли
+    top: { value: new THREE.Color(0x6b3a24) }, // глубокий синий зенит
+    mid: { value: new THREE.Color(0xf06a24) }, // оранжевый закат
+    bot: { value: new THREE.Color(0xffb14a) }, // светлая дымка у земли
   },
   vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 bot;
     void main(){ float h = normalize(vP).y;
-      vec3 c = mix(mid, top, smoothstep(0.04, 0.55, h));
-      c = mix(bot, c, smoothstep(-0.08, 0.12, h));
+      vec3 c = mix(mid, top, smoothstep(0.02, 0.42, h));
+      c = mix(bot, c, smoothstep(-0.14, 0.08, h));
       gl_FragColor = vec4(c, 1.0); }`,
 });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), skyMat);
 scene.add(sky);
 
+function makeSynthSunTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff0b8';
+  x.beginPath();
+  x.arc(128, 128, 118, 0, Math.PI * 2);
+  x.fill();
+  x.globalCompositeOperation = 'destination-out';
+  for (let y = 124; y < 232; y += 18) {
+    const h = 5 + (y - 124) * 0.035;
+    x.fillRect(0, y, 256, h);
+  }
+  x.globalCompositeOperation = 'source-over';
+  return new THREE.CanvasTexture(c);
+}
+const sunTexture = makeSynthSunTexture();
+sunTexture.magFilter = THREE.NearestFilter;
+sunTexture.minFilter = THREE.NearestFilter;
+
+function makeSunRaysTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d');
+  x.translate(256, 256);
+  x.fillStyle = 'rgba(255, 188, 92, 0.34)';
+  for (let i = 0; i < 28; i += 1) {
+    const a = (i / 28) * Math.PI * 2;
+    const spread = i % 2 === 0 ? 0.075 : 0.045;
+    const inner = i % 3 === 0 ? 104 : 122;
+    const outer = i % 2 === 0 ? 248 : 216;
+    x.beginPath();
+    x.moveTo(Math.cos(a - spread) * inner, Math.sin(a - spread) * inner);
+    x.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+    x.lineTo(Math.cos(a + spread) * inner, Math.sin(a + spread) * inner);
+    x.closePath();
+    x.fill();
+  }
+  return new THREE.CanvasTexture(c);
+}
+const sunRaysTexture = makeSunRaysTexture();
+sunRaysTexture.magFilter = THREE.NearestFilter;
+sunRaysTexture.minFilter = THREE.NearestFilter;
+
 // ---- солнце-диск у горизонта ----
+const sunRays = new THREE.Mesh(
+  new THREE.PlaneGeometry(96, 96),
+  new THREE.MeshBasicMaterial({
+    map: sunRaysTexture,
+    transparent: true,
+    opacity: 0.62,
+    fog: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+);
+sunRays.position.copy(SUN_DIR.clone().multiplyScalar(329));
+sunRays.lookAt(camera.position);
+sunRays.renderOrder = 1;
+scene.add(sunRays);
+
 const sunDisc = new THREE.Mesh(
-  new THREE.CircleGeometry(14, 32),
-  new THREE.MeshBasicMaterial({ color: 0xfff0c0, fog: false })
+  new THREE.CircleGeometry(34, 48),
+  new THREE.MeshBasicMaterial({ map: sunTexture, transparent: true, fog: false, depthWrite: false })
 );
 sunDisc.position.copy(SUN_DIR.clone().multiplyScalar(330));
 sunDisc.lookAt(0, sunDisc.position.y, 0);
+sunDisc.renderOrder = 2;
 scene.add(sunDisc);
 
+function addPixelCloud(blocks, position, scale = 1) {
+  const cloud = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffd9b0,
+    transparent: true,
+    opacity: 0.86,
+    fog: false,
+    depthWrite: false,
+  });
+
+  blocks.forEach(([x, y, w, h]) => {
+    const block = new THREE.Mesh(new THREE.PlaneGeometry(w * scale, h * scale), mat);
+    block.position.set(x * scale, y * scale, 0);
+    cloud.add(block);
+  });
+
+  cloud.position.copy(position);
+  cloud.lookAt(camera.position);
+  scene.add(cloud);
+  return cloud;
+}
+
+const cloudBlocksA = [
+  [-3.0, 0.0, 1.5, 0.7], [-1.8, 0.45, 2.0, 0.9], [0.0, 0.25, 2.4, 0.8],
+  [1.8, 0.0, 1.8, 0.7], [-0.8, -0.35, 3.6, 0.55],
+];
+const cloudBlocksB = [
+  [-2.2, 0.0, 1.4, 0.6], [-1.0, 0.35, 1.8, 0.75], [0.6, 0.2, 2.1, 0.7],
+  [2.0, -0.08, 1.3, 0.55], [-0.2, -0.3, 3.0, 0.5],
+];
+const skyClouds = [
+  addPixelCloud(cloudBlocksA, new THREE.Vector3(-54, 23, -120), 3.3),
+  addPixelCloud(cloudBlocksB, new THREE.Vector3(58, 28, -135), 3.0),
+];
+skyClouds.forEach((cloud, i) => {
+  cloud.userData.base = cloud.position.clone();
+  cloud.userData.phase = i * 2.4;
+});
+
+function animateSky(t) {
+  sunRays.lookAt(camera.position);
+  sunRays.scale.setScalar(1 + Math.sin(t * 0.8) * 0.035);
+  sunRays.material.opacity = 0.52 + Math.sin(t * 0.9) * 0.1;
+
+  skyClouds.forEach((cloud) => {
+    const base = cloud.userData.base;
+    const phase = cloud.userData.phase;
+    cloud.position.x = base.x + Math.sin(t * 0.13 + phase) * 3.4;
+    cloud.position.y = base.y + Math.sin(t * 0.32 + phase) * 0.7;
+    cloud.lookAt(camera.position);
+  });
+}
+
 // ---- степь (большая зелёная плоскость) ----
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(800, 800),
-  new THREE.MeshStandardMaterial({ color: 0x5f7a33, roughness: 1 }) // степная зелень
+const waterUniforms = {
+  time: { value: 0 },
+  deep: { value: new THREE.Color(0x172f2f) },
+  shallow: { value: new THREE.Color(0x4f704f) },
+  amber: { value: new THREE.Color(0xff9f3f) },
+};
+const waterMat = new THREE.ShaderMaterial({
+  fog: false,
+  depthWrite: true,
+  uniforms: waterUniforms,
+  vertexShader: `
+    uniform float time;
+    varying vec2 vUv;
+    varying vec3 vWorld;
+    void main() {
+      vUv = uv;
+      vec3 p = position;
+      float w1 = sin((p.x * 0.055) + time * 0.9);
+      float w2 = sin((p.y * 0.085) - time * 1.15);
+      p.z += (w1 + w2) * 0.035;
+      vec4 world = modelMatrix * vec4(p, 1.0);
+      vWorld = world.xyz;
+      gl_Position = projectionMatrix * viewMatrix * world;
+    }
+  `,
+  fragmentShader: `
+    uniform float time;
+    uniform vec3 deep;
+    uniform vec3 shallow;
+    uniform vec3 amber;
+    varying vec2 vUv;
+    varying vec3 vWorld;
+    void main() {
+      vec2 pixel = floor(vWorld.xz * 1.45) / 1.45;
+      float ripple = sin(pixel.x * 0.85 + time * 1.2) * 0.5 + sin(pixel.y * 1.15 - time * 1.7) * 0.5;
+      ripple = floor((ripple * 0.5 + 0.5) * 5.0) / 5.0;
+
+      float horizon = smoothstep(-170.0, 150.0, -vWorld.z);
+      vec3 color = mix(shallow, deep, horizon);
+      color += ripple * 0.045;
+
+      float center = 1.0 - smoothstep(0.0, 42.0, abs(vWorld.x));
+      float distanceFade = smoothstep(20.0, 190.0, -vWorld.z);
+      float broken = step(0.56, fract(sin(dot(floor(pixel * 0.9), vec2(12.9898, 78.233))) * 43758.5453));
+      float reflection = center * distanceFade * (0.45 + ripple * 0.55) * mix(0.7, 1.0, broken);
+      color = mix(color, amber, reflection * 0.55);
+
+      float scan = step(0.82, fract((vWorld.z + time * 7.0) * 0.18));
+      color += amber * scan * center * distanceFade * 0.08;
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+});
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(800, 800, 120, 120),
+  waterMat
 );
-ground.rotation.x = -Math.PI / 2;
-ground.position.set(0, 0, -3);
-scene.add(ground);
+water.rotation.x = -Math.PI / 2;
+water.position.set(0, -0.015, -3);
+scene.add(water);
 
 // ---- экран монитора: CanvasTexture с ретро-контентом (в него «въезжаем») ----
 const sCanvas = document.createElement('canvas');
@@ -173,7 +341,7 @@ const loadGLB = (url) => new Promise((res, rej) => gltfLoader.load(url, res, und
 const applyPS1Tree = (root) => root.traverse((o) => { if (o.isMesh) makePS1(o.material); });
 
 // бумбокс на столе (кликабельный, музыку подключим позже)
-let boombox = null, boomScale = 1, hoverBoom = false;
+let boombox = null, boomScale = 1, hoverBoom = false, boomBaseY = 0;
 
 Promise.all([loadGLB('assets/Table.glb'), loadGLB('assets/pc.glb'), loadGLB('assets/Camera.glb'), loadGLB('assets/cc0_free_low_poly_boombox.glb')])
   .then(([table, pc, cam, boom]) => {
@@ -194,9 +362,10 @@ Promise.all([loadGLB('assets/Table.glb'), loadGLB('assets/pc.glb'), loadGLB('ass
     boombox = boom.scene; applyPS1Tree(boombox);
     const bsz = new THREE.Box3().setFromObject(boombox).getSize(new THREE.Vector3());
     boomScale = 0.6 / bsz.x; boombox.scale.setScalar(boomScale);
-    boombox.position.set(0.95, 0, -1.9); boombox.rotation.y = -0.4;
+    boombox.position.set(-0.85, 0, -1.9); boombox.rotation.y = 0.4; // слева от монитора
     scene.add(boombox); boombox.updateMatrixWorld(true);
     boombox.position.y = tableTop - new THREE.Box3().setFromObject(boombox).min.y; // на столешницу
+    boomBaseY = boombox.position.y;
 
     // --- видеокамера слева-сзади, как фоновый реквизит ---
     const camObj = cam.scene; applyPS1Tree(camObj);
@@ -263,7 +432,7 @@ const rdust = dust.clone(); roomScene.add(rdust);
 // фотки в рамках на стенах
 const texLoader = new THREE.TextureLoader();
 const photoMeshes = []; // для клика-навигации
-function hangPhoto(url, x, y, z, ry, h = 1.3) {
+function hangPhoto(targetScene, photosArr, url, x, y, z, ry, h = 1.3) {
   const grp = new THREE.Group();
   // рамка-короб (дерево, с глубиной) + паспарту + фото
   const frame = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.07),
@@ -275,8 +444,8 @@ function hangPhoto(url, x, y, z, ry, h = 1.3) {
     new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.DoubleSide }));
   frame.position.z = -0.035; matte.position.z = 0.015; photo.position.z = 0.05; // развели по Z
   grp.add(frame, matte, photo);
-  grp.position.set(x, y, z); grp.rotation.y = ry; roomScene.add(grp);
-  photoMeshes.push(photo);
+  grp.position.set(x, y, z); grp.rotation.y = ry; targetScene.add(grp);
+  photosArr.push(photo);
   texLoader.load(url, (tex) => {
     tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
     const a = tex.image.width / tex.image.height, w = h * a;
@@ -287,10 +456,96 @@ function hangPhoto(url, x, y, z, ry, h = 1.3) {
   });
 }
 const HY = 2.0, eps = 0.06;
-hangPhoto('assets/1.png', -1.7, HY, -RD / 2 + eps, 0);
-hangPhoto('assets/4.png', 1.7, HY, -RD / 2 + eps, 0);
-hangPhoto('assets/2.png', -RW / 2 + eps, HY, -0.8, Math.PI / 2);
-hangPhoto('assets/3.png', RW / 2 - eps, HY, -0.8, -Math.PI / 2);
+hangPhoto(roomScene, photoMeshes, 'assets/1.png', -2.5, HY, -RD / 2 + eps, 0);
+hangPhoto(roomScene, photoMeshes, 'assets/4.png', 2.5, HY, -RD / 2 + eps, 0);
+hangPhoto(roomScene, photoMeshes, 'assets/2.png', -RW / 2 + eps, HY, -0.8, Math.PI / 2);
+hangPhoto(roomScene, photoMeshes, 'assets/3.png', RW / 2 - eps, HY, -0.8, -Math.PI / 2);
+
+// =========================================================
+//  ДВЕРЬ между двумя картинами (центр задней стены) -> следующая комната
+// =========================================================
+const DOOR_H = 2.4, DOOR_OPEN = -1.5;   // высота двери и угол открытия полотна (рад)
+const allDoors = [];                     // все двери (для сброса в закрытое при переходе)
+
+// собрать дверь из закрытой сборки "01" модели; полотно ("door") крутится по клику
+function makeModelDoor(fullScene, targetScene, x, z, ry, target) {
+  const holder = new THREE.Group();
+  const inst = fullScene.clone(true); // клон всей сцены (с предком -90°X), иначе дверь ляжет на бок
+  let open2 = null; inst.traverse((o) => { if (o.name === '01_1') open2 = o; }); // вырезать открытую копию
+  if (open2 && open2.parent) open2.parent.remove(open2);
+  applyPS1Tree(inst);
+  holder.add(inst);
+  // масштаб под высоту проёма + центрирование X/Z, низ на пол
+  inst.updateMatrixWorld(true);
+  let bb = new THREE.Box3().setFromObject(inst);
+  const sz = bb.getSize(new THREE.Vector3());
+  inst.scale.multiplyScalar(DOOR_H / sz.y);
+  inst.updateMatrixWorld(true);
+  bb = new THREE.Box3().setFromObject(inst);
+  const ctr = bb.getCenter(new THREE.Vector3());
+  inst.position.x -= ctr.x; inst.position.z -= ctr.z; inst.position.y -= bb.min.y;
+  // полотно + ручка (ручка едет с полотном)
+  let leaf = null, handle = null;
+  inst.traverse((o) => { if (o.name === 'door') leaf = o; if (o.name === 'handel') handle = o; });
+  if (leaf && handle) leaf.attach(handle);
+  // за дверью — ТЕМНОТА (а не цвет стены): тёмный проём-ниша перед стеной
+  const dark = new THREE.Mesh(new THREE.BoxGeometry(1.02, 2.12, 0.14),
+    new THREE.MeshBasicMaterial({ color: 0x050505, fog: false }));
+  dark.position.set(0, DOOR_H / 2, -0.08);
+  // невидимый хитбокс для надёжного клика
+  const hit = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.6),
+    new THREE.MeshBasicMaterial({ visible: false }));
+  hit.position.set(0, DOOR_H / 2, 0.22);
+  holder.add(dark, hit);
+  holder.position.set(x, 0, z); holder.rotation.y = ry;
+  holder.userData.target = target;
+  holder.userData.leaf = leaf;
+  holder.userData.closed = leaf ? leaf.rotation.y : 0;
+  holder.userData.opened = (leaf ? leaf.rotation.y : 0) + DOOR_OPEN;
+  targetScene.add(holder);
+  allDoors.push(holder);
+  return holder;
+}
+const doorsRoom1 = []; // наполнится после загрузки модели двери
+// мягкий тёплый свет у двери
+const doorLight = new THREE.PointLight(0xffcf8a, 2.5, 6, 2);
+doorLight.position.set(0, 1.6, -RD / 2 + 0.6); roomScene.add(doorLight);
+
+// =========================================================
+//  КОМНАТА 2 (следующая) — отдельная сцена, дверь обратно в комнату 1
+// =========================================================
+function buildRoom2() {
+  const s = new THREE.Scene();
+  s.background = new THREE.Color(0x0c1014);
+  s.fog = new THREE.Fog(0x0c1014, 6, 16);
+  const walls = new THREE.Mesh(new THREE.BoxGeometry(RW, RH, RD),
+    makePS1(new THREE.MeshStandardMaterial({ color: 0x4e6173, roughness: 1, side: THREE.BackSide })));
+  walls.position.y = RH / 2; s.add(walls);
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD),
+    makePS1(new THREE.MeshStandardMaterial({ color: 0x2c3a44, roughness: 1 })));
+  fl.rotation.x = -Math.PI / 2; s.add(fl);
+  s.add(new THREE.HemisphereLight(0xbfe0ff, 0x10181e, 0.4));
+  const pl = new THREE.PointLight(0x9fd0ff, 3, 16, 2); pl.position.set(0, 3.5, 0); s.add(pl);
+  s.add(dust.clone());
+  const photos = [], doors = [];
+  // пару кадров на дальней стене (заглушки — замени ассеты)
+  hangPhoto(s, photos, 'assets/2.png', -2.5, HY, -RD / 2 + eps, 0);
+  hangPhoto(s, photos, 'assets/3.png', 2.5, HY, -RD / 2 + eps, 0);
+  // дверь обратно (наполнится после загрузки модели) + тёплый свет у неё
+  const dl = new THREE.PointLight(0xbfe0ff, 2.2, 6, 2);
+  dl.position.set(0, 1.6, RD / 2 - 0.6); s.add(dl);
+  return { scene: s, floor: fl, photos, doors };
+}
+const room2 = buildRoom2();
+
+// загрузка модели двери -> установка дверей в обе комнаты (между картинами)
+loadGLB('assets/door_wooden_old_-9mb.glb').then((g) => {
+  doorsRoom1.push(makeModelDoor(g.scene, roomScene, 0, -RD / 2 + 0.1, 0, 'room2'));
+  room2.doors.push(makeModelDoor(g.scene, room2.scene, 0, RD / 2 - 0.1, Math.PI, 'room1'));
+}).catch((e) => console.warn('Дверь не загрузилась:', e));
+
+// активная комната (что рендерим/по чему кликаем)
+let activeRoomScene = roomScene, activeFloor = floor, activePhotos = photoMeshes, activeDoors = doorsRoom1;
 
 // управление: осмотр перетаскиванием + навигация кликом (без WASD/скролла)
 let inRoom = false, yaw = Math.PI, pitch = 0, dragging = false, moved = false, px = 0, py = 0;
@@ -317,10 +572,11 @@ function toggleMusic() {
 function navClick(e) {
   const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, roomCam);
-  const fh = ray.intersectObject(floor)[0];
-  if (fh) { moveTo(fh.point.x, fh.point.z); return; }
-  // клик по фото -> встать ровно перед ним и навести взгляд в центр
-  const ph = ray.intersectObjects(photoMeshes)[0];
+  // 1) клик по двери -> открыть полотно, затем переход
+  const dh = ray.intersectObjects(activeDoors, true)[0];
+  if (dh) { let o = dh.object; while (o && o.userData.target === undefined) o = o.parent; if (o) { activateDoor(o, o.userData.target); return; } }
+  // 2) клик по фото -> встать ровно перед ним и навести взгляд в центр
+  const ph = ray.intersectObjects(activePhotos)[0];
   if (ph) {
     const grp = ph.object.parent;
     const c = grp.getWorldPosition(new THREE.Vector3());          // центр картинки
@@ -336,7 +592,36 @@ function navClick(e) {
     const o = { yaw, pitch };
     gsap.to(o, { yaw: ty, pitch: tp, duration: 1.1, ease: 'power2.inOut',
       onUpdate: () => { yaw = o.yaw; pitch = o.pitch; } });
+    return;
   }
+  // 3) клик по полу -> идти туда
+  const fh = ray.intersectObject(activeFloor)[0];
+  if (fh) moveTo(fh.point.x, fh.point.z);
+}
+// клик по двери: плавно открыть полотно, затем перейти в комнату
+function activateDoor(grp, target) {
+  if (busy) return;
+  const leaf = grp.userData.leaf;
+  if (!leaf) { goToRoom(target); return; }
+  busy = true;
+  gsap.to(leaf.rotation, { y: grp.userData.opened, duration: 0.7, ease: 'power2.out',
+    onComplete: () => { busy = false; goToRoom(target); } });
+}
+// переход между комнатами (через ту же шторку fade)
+function goToRoom(target) {
+  if (busy) return;
+  transition(() => {
+    // все двери снова закрыты
+    allDoors.forEach((d) => { if (d.userData.leaf) d.userData.leaf.rotation.y = d.userData.closed; });
+    // встаём как при скролл-входе: в глубине комнаты, лицом к стене с дверью/картинами
+    if (target === 'room2') {
+      activeRoomScene = room2.scene; activeFloor = room2.floor; activePhotos = room2.photos; activeDoors = room2.doors;
+    } else {
+      activeRoomScene = roomScene; activeFloor = floor; activePhotos = photoMeshes; activeDoors = doorsRoom1;
+    }
+    roomCam.position.set(0, 1.7, 3.2); yaw = Math.PI; pitch = -0.05;
+    aim();
+  });
 }
 addEventListener('pointerdown', (e) => { if (inRoom) { dragging = true; moved = false; px = e.clientX; py = e.clientY; } });
 addEventListener('pointerup', (e) => {
@@ -380,6 +665,8 @@ function enterRoom() {
   if (inRoom || busy) return;
   transition(() => {
     inRoom = true;
+    // всегда стартуем в комнате 1
+    activeRoomScene = roomScene; activeFloor = floor; activePhotos = photoMeshes; activeDoors = doorsRoom1;
     roomCam.position.set(0, 1.7, 3.2); yaw = Math.PI; pitch = -0.05; aim();
     document.body.classList.add('locked');
     roomUI && roomUI.classList.add('on');
@@ -448,9 +735,23 @@ function tick() {
   if (inRoom) {
     aim();                          // взгляд (позицию двигает gsap по клику)
     rdust.rotation.y = t * 0.03;
-    renderer.render(roomScene, roomCam);
+    renderer.render(activeRoomScene, roomCam);
   } else {
-    if (boombox) boombox.scale.setScalar(boomScale * (hoverBoom ? 1 + Math.sin(t * 6) * 0.05 : 1)); // пульс при наведении
+    if (boombox) {
+      if (playing) {
+        // музыка включена -> бумбокс «качает»: подпрыгивает + покачивается + squash/stretch
+        const beat = Math.abs(Math.sin(t * 7));
+        boombox.position.y = boomBaseY + beat * 0.05;
+        boombox.rotation.z = Math.sin(t * 7) * 0.05;
+        boombox.scale.set(boomScale * (1 + beat * 0.06), boomScale * (1 - beat * 0.05), boomScale * (1 + beat * 0.06));
+      } else {
+        boombox.position.y = boomBaseY;
+        boombox.rotation.z = 0;
+        boombox.scale.setScalar(boomScale * (hoverBoom ? 1 + Math.sin(t * 6) * 0.05 : 1)); // лёгкий пульс при наведении
+      }
+    }
+    animateSky(t);
+    waterUniforms.time.value = t;
     dust.rotation.y = t * 0.02;
     renderer.render(scene, camera);
   }
